@@ -130,10 +130,10 @@ def evaluate_questions(llm, retriever, prompt, question_file, output_file):
     """
     Automatically evaluates model responses to a list of questions
     and saves them in standardized format:
-    QUESTION | CORRECT_ANSWER | MODEL_ANSWER
+    DOCUMENT | QUESTION | CORRECT_ANSWER | LLM_ANSWER
     """
 
-    import pandas as pd
+    import pandas as pd, os
 
     print("\nStarting automatic evaluation...\n")
 
@@ -176,19 +176,18 @@ def evaluate_questions(llm, retriever, prompt, question_file, output_file):
         model_answers.append(model_answer)
 
     # --- 5. Append model answers to DataFrame ---
-    df['MODEL_ANSWER'] = model_answers
+    df['LLM_ANSWER'] = model_answers
 
-    # --- 6. Force exact output format for BERTScore compatibility ---
-    df = df.rename(columns={
-        'QUESTION': 'QUESTION',
-        'CORRECT_ANSWER': 'CORRECT_ANSWER',
-        'MODEL_ANSWER': 'MODEL_ANSWER'
-    })[["QUESTION", "CORRECT_ANSWER", "MODEL_ANSWER"]]
+    # --- 6. Add DOCUMENT column automatically ---
+    df['DOCUMENT'] = os.path.splitext(os.path.basename(output_file))[0]
 
-    # --- 7. Save output file ---
+    # --- 7. Reorder columns for standard output ---
+    df = df[["DOCUMENT", "QUESTION", "CORRECT_ANSWER", "LLM_ANSWER"]]
+
+    # --- 8. Save output file ---
     df.to_excel(output_file, index=False)
     print(f"\n Saved results to {output_file}")
-
+    
 
 
 if __name__ == "__main__":
