@@ -188,7 +188,7 @@ def evaluate_questions(llm, retriever, prompt, question_file, output_file):
     # --- 7. Save output file ---
     df.to_excel(output_file, index=False)
     print(f"\n Saved results to {output_file}")
-    print("You can now run: python scores.py", output_file)
+
 
 
 if __name__ == "__main__":
