@@ -36,8 +36,9 @@ def calculate_bertscore_df(df):
     Returns:
         pandas.DataFrame: A DataFrame with the additional columns 'BERT_PRECISION', 'BERT_RECALL', and 'BERT_F1' containing the BERTScore for each pair.
     """
-    references = df['CORRECT_ANSWER'].tolist()
-    candidates = df['LLM_ANSWER'].tolist()
+    df.columns = [c.strip().lower() for c in df.columns]
+    references = df['correct_answer'].tolist()
+    candidates = df['llm_answer'].tolist()
     
     precision, recall, f1 = score(candidates, references, lang="en", verbose=True)
     
