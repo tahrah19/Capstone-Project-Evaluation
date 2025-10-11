@@ -128,60 +128,67 @@ from langchain.chains import create_retrieval_chain
 
 def evaluate_questions(llm, retriever, prompt, question_file, output_file):
     """
-    Automatic evaluation mode.
-    Reads questions and reference answers from a CSV/XLSX file, queries the LLM,
-    and saves model answers in the same structure.
+    Automatically evaluates model responses to a list of questions
+    and saves them in standardized format:
+    QUESTION | CORRECT_ANSWER | MODEL_ANSWER
     """
+
+    import pandas as pd
 
     print("\nStarting automatic evaluation...\n")
 
-    # Load the question file (accepts CSV or XLSX)
-    if question_file.endswith(".xlsx"):
+    # --- 1. Load input file ---
+    if question_file.lower().endswith('.csv'):
+        df = pd.read_csv(question_file)
+    elif question_file.lower().endswith('.xlsx'):
         df = pd.read_excel(question_file)
     else:
-        df = pd.read_csv(question_file)
+        raise ValueError("Unsupported file type. Please use CSV or XLSX.")
 
-    # Expected columns
-    required_cols = ["document", "question", "correct_answer"]
+    # --- 2. Normalize column names ---
+    df.columns = [c.strip().upper() for c in df.columns]
+
+    # --- 3. Validate required columns ---
+    required_cols = ['QUESTION', 'CORRECT_ANSWER']
     for col in required_cols:
         if col not in df.columns:
-            raise ValueError(
-                f"Missing column '{col}'.\nExpected columns: {required_cols}\n"
-                f"Please use the same format as bert_input_template.csv."
-            )
+            raise ValueError(f"Missing required column: {col}")
 
-    # Prepare the retrieval + question-answering chain
-    question_answer_chain = create_stuff_documents_chain(llm, prompt)
-    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+    # --- 4. Generate model answers ---
+    model_answers = []
+    for i, row in df.iterrows():
+        query = str(row['QUESTION']).strip()
+        print(f"Asking ({i+1}/{len(df)}): {query}")
 
-    results = []
-    for _, row in tqdm(df.iterrows(), total=len(df), desc="Evaluating questions"):
-        question = row["question"]
-        document = row["document"]
-        correct_answer = row["correct_answer"]
+        # Retrieve top relevant chunks from retriever
+        retrieved_docs = retriever.invoke(query)
+        context = "\n\n".join([d.page_content for d in retrieved_docs])
 
-        try:
-            response = rag_chain.invoke({"input": question})
-            llm_answer = response.get("answer", "").strip()
-        except Exception as e:
-            llm_answer = f"Error: {e}"
+        # Ask model using your standard prompt
+        response = llm.invoke(prompt.format(context=context, input=query))
 
-        results.append({
-            "document": document,
-            "question": question,
-            "correct_answer": correct_answer,
-            "llm_answer": llm_answer
-        })
+        # Handle both string or object responses
+        if isinstance(response, str):
+            model_answer = response.strip()
+        else:
+            model_answer = getattr(response, "content", str(response)).strip()
 
-    out_df = pd.DataFrame(results)
+        model_answers.append(model_answer)
 
-    # Save output in the same lowercase format
-    if output_file.endswith(".xlsx"):
-        out_df.to_excel(output_file, index=False)
-    else:
-        out_df.to_csv(output_file, index=False)
+    # --- 5. Append model answers to DataFrame ---
+    df['MODEL_ANSWER'] = model_answers
 
-    print(f"\nEvaluation completed — results saved to: {output_file}\n")
+    # --- 6. Force exact output format for BERTScore compatibility ---
+    df = df.rename(columns={
+        'QUESTION': 'QUESTION',
+        'CORRECT_ANSWER': 'CORRECT_ANSWER',
+        'MODEL_ANSWER': 'MODEL_ANSWER'
+    })[["QUESTION", "CORRECT_ANSWER", "MODEL_ANSWER"]]
+
+    # --- 7. Save output file ---
+    df.to_excel(output_file, index=False)
+    print(f"\n Saved results to {output_file}")
+    print("You can now run: python scores.py", output_file)
 
 
 if __name__ == "__main__":
@@ -248,9 +255,7 @@ if __name__ == "__main__":
 
     print("Starting chat.\n")
 
-    # -------------------------------
-    # MODE SELECTION (interactive vs auto-run)
-    # -------------------------------
+
 
     print("\nSelect mode:")
     print("1 - Interactive (manual Q&A)")
