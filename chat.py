@@ -126,18 +126,20 @@ import os
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 
-def evaluate_questions(llm, retriever, prompt, question_file, output_file):
+def evaluate_questions(llm, retriever, prompt, question_file, gen_model):
     """
     Automatically evaluates model responses to a list of questions
-    and saves them in standardized format:
+    and saves them in standardized CSV format:
     DOCUMENT | QUESTION | CORRECT_ANSWER | LLM_ANSWER
     """
 
     import pandas as pd, os
+    import csv
+
 
     print("\nStarting automatic evaluation...\n")
 
-    # --- 1. Load input file ---
+    # 1. Load input file
     if question_file.lower().endswith('.csv'):
         df = pd.read_csv(question_file)
     elif question_file.lower().endswith('.xlsx'):
@@ -145,48 +147,52 @@ def evaluate_questions(llm, retriever, prompt, question_file, output_file):
     else:
         raise ValueError("Unsupported file type. Please use CSV or XLSX.")
 
-    # --- 2. Normalize column names ---
+    # 2. Normalize column names
     df.columns = [c.strip().upper() for c in df.columns]
 
-    # --- 3. Validate required columns ---
+    # 3. Validate required columns
     required_cols = ['QUESTION', 'CORRECT_ANSWER']
     for col in required_cols:
         if col not in df.columns:
             raise ValueError(f"Missing required column: {col}")
 
-    # --- 4. Generate model answers ---
+    # 4. Generate model answers
     model_answers = []
     for i, row in df.iterrows():
         query = str(row['QUESTION']).strip()
         print(f"Asking ({i+1}/{len(df)}): {query}")
 
-        # Retrieve top relevant chunks from retriever
         retrieved_docs = retriever.invoke(query)
         context = "\n\n".join([d.page_content for d in retrieved_docs])
 
-        # Ask model using your standard prompt
         response = llm.invoke(prompt.format(context=context, input=query))
-
-        # Handle both string or object responses
-        if isinstance(response, str):
-            model_answer = response.strip()
-        else:
-            model_answer = getattr(response, "content", str(response)).strip()
-
+        model_answer = response.strip() if isinstance(response, str) else getattr(response, "content", str(response)).strip()
         model_answers.append(model_answer)
 
-    # --- 5. Append model answers to DataFrame ---
+    # 5. Append model answers to DataFrame
     df['LLM_ANSWER'] = model_answers
 
-    # --- 6. Add DOCUMENT column automatically ---
-    df['DOCUMENT'] = os.path.splitext(os.path.basename(output_file))[0]
+    # 6. Derive base filename and document name
+    base_name = os.path.splitext(os.path.basename(question_file))[0]
+    base_name = base_name.replace("-Questions", "").replace("_Questions", "")
+    document_name = base_name 
 
-    # --- 7. Reorder columns for standard output ---
+    # 7. Construct output filename
+    output_file = f"{base_name}-{gen_model}.csv"
+
+    # 8. Add DOCUMENT column
+    df['DOCUMENT'] = document_name
+
+    # 9. Reorder columns for standard output
     df = df[["DOCUMENT", "QUESTION", "CORRECT_ANSWER", "LLM_ANSWER"]]
 
-    # --- 8. Save output file ---
-    df.to_excel(output_file, index=False)
-    print(f"\n Saved results to {output_file}")
+    # 10. Save output as CSV
+    df.to_csv(output_file, index=False, quoting=1)
+
+    print(f"\n Output: {output_file} created successfully ")
+
+    return output_file
+
     
 
 
@@ -264,7 +270,6 @@ if __name__ == "__main__":
 
     if mode == "2":
         question_file = input("Enter path to question file (CSV/XLSX): ").strip()
-        output_file = input("Enter desired output filename (e.g., file-name-llama3.2.xlsx): ").strip()
-        evaluate_questions(LLM, RETRIEVER, PROMPT, question_file, output_file)
+        evaluate_questions(LLM, RETRIEVER, PROMPT, question_file, GEN_MODEL)
     else:
         interactive_chat(llm=LLM, retriever=RETRIEVER, prompt=PROMPT)
