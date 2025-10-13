@@ -154,7 +154,7 @@ def evaluate_questions(llm, retriever, prompt, question_file, gen_model):
     required_cols = ['QUESTION', 'CORRECT_ANSWER']
     for col in required_cols:
         if col not in df.columns:
-            raise ValueError(f"Missing required column: {col}")
+            raise ValueError(f"Missing required column: Question , Correct_Answer")
 
     # 4. Generate model answers
     model_answers = []
