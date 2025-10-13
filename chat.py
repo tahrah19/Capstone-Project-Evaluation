@@ -178,7 +178,9 @@ def evaluate_questions(llm, retriever, prompt, question_file, gen_model):
     document_name = base_name 
 
     # 7. Construct output filename
-    output_file = f"{base_name}-{gen_model}.csv"
+    output_dir = os.path.dirname(question_file)
+    output_file = os.path.join(output_dir, f"{base_name}-{gen_model}.csv")
+    
 
     # 8. Add DOCUMENT column
     df['DOCUMENT'] = document_name
