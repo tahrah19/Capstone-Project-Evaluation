@@ -1,4 +1,4 @@
-
+import pandas as pd
 import os
 import json
 from pathlib import Path
@@ -23,6 +23,16 @@ from vecdb import VectorStore
 from models import ollama_status, select_model
 from utils import choose_file, clip_text
 from converters import pdf_converter, extract_metadata, metadata
+
+# ------------------------------------------------------------------------------ 
+# Remove redundancies
+# ------------------------------------------------------------------------------ 
+import pandas as pd
+from tqdm import tqdm
+import os
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
+# ------------------------------------------------------------------------------ 
 
 
 def initialize_from_pdf(gen_model,
@@ -120,83 +130,82 @@ def interactive_chat(llm, retriever, prompt):
             print(f"  * text: {json.dumps(clip_text(doc.page_content, threshold=350))}")
             print(f"  * page: {doc.metadata.get('page_no')}")
             print(f"  * document: {doc.metadata.get('source')}")
-import pandas as pd
-from tqdm import tqdm
-import os
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
 
-def evaluate_questions(llm, retriever, prompt, question_file, gen_model):
+
+def evaluate_questions(llm, retriever, prompt, question_file, base_file_name, output_file):
     """
     Automatically evaluates model responses to a list of questions
-    and saves them in standardized CSV format:
+    and saves them in standardized format:
     DOCUMENT | QUESTION | CORRECT_ANSWER | LLM_ANSWER
     """
 
-    import pandas as pd, os
-    import csv
-
+    
 
     print("\nStarting automatic evaluation...\n")
 
-    # 1. Load input file
+    print(f"\nUsing:\n"
+          f"  Document: {base_file_name}\n"
+          f"  Document-Model: {output_file}\n\n")
+
+    extension = ''
+
+    
     if question_file.lower().endswith('.csv'):
+        extension = 'csv'
         df = pd.read_csv(question_file)
     elif question_file.lower().endswith('.xlsx'):
+        extension = 'xlsx'
         df = pd.read_excel(question_file)
     else:
         raise ValueError("Unsupported file type. Please use CSV or XLSX.")
 
-    # 2. Normalize column names
+    
     df.columns = [c.strip().upper() for c in df.columns]
 
-    # 3. Validate required columns
+    
     required_cols = ['QUESTION', 'CORRECT_ANSWER']
     for col in required_cols:
         if col not in df.columns:
-            raise ValueError(f"Missing required column: Question , Correct_Answer")
+            raise ValueError(f"Missing required column: {col}")
 
-    # 4. Generate model answers
+    
     model_answers = []
     for i, row in df.iterrows():
         query = str(row['QUESTION']).strip()
         print(f"Asking ({i+1}/{len(df)}): {query}")
 
+        
         retrieved_docs = retriever.invoke(query)
         context = "\n\n".join([d.page_content for d in retrieved_docs])
 
+        
         response = llm.invoke(prompt.format(context=context, input=query))
-        model_answer = response.strip() if isinstance(response, str) else getattr(response, "content", str(response)).strip()
+
+        
+        if isinstance(response, str):
+            model_answer = response.strip()
+        else:
+            model_answer = getattr(response, "content", str(response)).strip()
+
         model_answers.append(model_answer)
 
-    # 5. Append model answers to DataFrame
+    
     df['LLM_ANSWER'] = model_answers
 
-    # 6. Derive base filename and document name
-    base_name = os.path.splitext(os.path.basename(question_file))[0]
-    base_name = base_name.replace("-Questions", "").replace("_Questions", "")
-    document_name = base_name 
-
-    # 7. Construct output filename
-    output_dir = os.path.dirname(question_file)
-    output_file = os.path.join(output_dir, f"{base_name}-{gen_model}.csv")
     
+    df['DOCUMENT'] = base_file_name
 
-    # 8. Add DOCUMENT column
-    df['DOCUMENT'] = document_name
 
-    # 9. Reorder columns for standard output
     df = df[["DOCUMENT", "QUESTION", "CORRECT_ANSWER", "LLM_ANSWER"]]
 
-    # 10. Save output as CSV
-    df.to_csv(output_file, index=False, quoting=1)
 
-    print(f"\n Output: {output_file} created successfully ")
 
-    return output_file
-
+    if extension == 'csv':
+        df.to_csv(output_file + '.' + extension, index=False)
+    elif extension == 'xlsx':
+        df.to_excel(output_file + '.' + extension, index=False)
+    print(f"\nSaved results to {output_file + '.' + extension}\n")
     
-
 
 if __name__ == "__main__":
 
@@ -223,6 +232,17 @@ if __name__ == "__main__":
         exit()
 
     FILE_PATH = choose_file(DATA_DIR)
+
+    
+
+    base_file = os.path.basename(FILE_PATH)
+    base_file_name, _ = os.path.splitext(base_file)
+    output_file_name = base_file_name + '-' + GEN_MODEL
+
+    #print(f"Document: {base_file_name}")
+    #print(f"Document-Model: {output_file_name}")
+
+    # ------------------------------------------------------------------------------ 
 
     PROMPT = ChatPromptTemplate.from_template(
         """Context information is below.
@@ -260,18 +280,19 @@ if __name__ == "__main__":
                                              max_tokens=MAX_TOKENS,
                                              top_k=TOP_K)
 
-    print("Starting chat.\n")
+    
 
-
-
-    print("\nSelect mode:")
-    print("1 - Interactive (manual Q&A)")
-    print("2 - Auto-run (read from question file)\n")
+    print("\nSelect mode:\n")
+    print("  1. Interactive (manual Q&A)")
+    print("  2. Auto-run (read from question file)\n\n")
 
     mode = input("Enter mode [1 or 2]: ").strip()
 
     if mode == "2":
         question_file = input("Enter path to question file (CSV/XLSX): ").strip()
-        evaluate_questions(LLM, RETRIEVER, PROMPT, question_file, GEN_MODEL)
+        
+        evaluate_questions(LLM, RETRIEVER, PROMPT, question_file, base_file_name, output_file_name)
     else:
+        print("Starting chat\n")
         interactive_chat(llm=LLM, retriever=RETRIEVER, prompt=PROMPT)
+
