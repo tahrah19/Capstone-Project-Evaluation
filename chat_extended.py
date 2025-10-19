@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+from tqdm import tqdm
 import json
 from pathlib import Path
 
@@ -24,15 +25,6 @@ from models import ollama_status, select_model
 from utils import choose_file, clip_text
 from converters import pdf_converter, extract_metadata, metadata
 
-# ------------------------------------------------------------------------------ 
-# Remove redundancies
-# ------------------------------------------------------------------------------ 
-import pandas as pd
-from tqdm import tqdm
-import os
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
-# ------------------------------------------------------------------------------ 
 
 
 def initialize_from_pdf(gen_model,
@@ -239,11 +231,7 @@ if __name__ == "__main__":
     base_file_name, _ = os.path.splitext(base_file)
     output_file_name = base_file_name + '-' + GEN_MODEL
 
-    #print(f"Document: {base_file_name}")
-    #print(f"Document-Model: {output_file_name}")
-
-    # ------------------------------------------------------------------------------ 
-
+    
     PROMPT = ChatPromptTemplate.from_template(
         """Context information is below.
         \n---------------------\n
